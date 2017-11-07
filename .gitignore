@@ -49,4 +49,4 @@ evennia.bat
 twistd.bat
 
 # Folders
-evennia/mygame
+**/evennia/mygame
