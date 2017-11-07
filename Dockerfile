@@ -24,13 +24,13 @@ FROM alpine
 MAINTAINER www.evennia.com
 
 # install compilation environment
-RUN apk update && apk add python py-pip python-dev py-setuptools gcc musl-dev jpeg-dev zlib-dev bash
+RUN apk update && apk add python py-pip python-dev py-setuptools gcc musl-dev jpeg-dev zlib-dev bash py2-openssl
 
 # add the project source
 ADD . /usr/src/evennia
 
 # install dependencies
-RUN pip install -e /usr/src/evennia --index-url=http://pypi.python.org/simple/ --trusted-host pypi.python.org
+RUN pip install -e /usr/src/evennia
 
 # add the game source when rebuilding a new docker image from inside
 # a game dir 
@@ -51,4 +51,4 @@ ENV PS1 "evennia|docker \w $ "
 ENTRYPOINT  ["bash"]
 
 # expose the telnet, webserver and websocket client ports
-EXPOSE 4000 4001 4005
+EXPOSE 4000 4001 4004 4005
