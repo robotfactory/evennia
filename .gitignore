@@ -47,3 +47,6 @@ nosetests.xml
 # Windows files generated during setup
 evennia.bat
 twistd.bat
+
+# Folders
+evennia/mygame
