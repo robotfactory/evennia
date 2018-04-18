@@ -34,8 +34,8 @@ class TelnetProtocol(Telnet, StatefulTelnetProtocol, Session):
     """
 
     def __init__(self, *args, **kwargs):
-        self.protocol_name = "telnet"
         super(TelnetProtocol, self).__init__(*args, **kwargs)
+        self.protocol_key = "telnet"
 
     def connectionMade(self):
         """
@@ -49,7 +49,10 @@ class TelnetProtocol(Telnet, StatefulTelnetProtocol, Session):
         # this number is counted down for every handshake that completes.
         # when it reaches 0 the portal/server syncs their data
         self.handshakes = 8  # suppress-go-ahead, naws, ttype, mccp, mssp, msdp, gmcp, mxp
-        self.init_session(self.protocol_name, client_address, self.factory.sessionhandler)
+        self.init_session(self.protocol_key, client_address, self.factory.sessionhandler)
+        # add this new connection to sessionhandler so
+        # the Server becomes aware of it.
+        self.sessionhandler.connect(self)
 
         # suppress go-ahead
         self.sga = suppress_ga.SuppressGA(self)
@@ -66,13 +69,10 @@ class TelnetProtocol(Telnet, StatefulTelnetProtocol, Session):
         self.oob = telnet_oob.TelnetOOB(self)
         # mxp support
         self.mxp = Mxp(self)
-        # add this new connection to sessionhandler so
-        # the Server becomes aware of it.
-        self.sessionhandler.connect(self)
 
-        # timeout the handshakes in case the client doesn't reply at all
         from evennia.utils.utils import delay
-        delay(2, callback=self.handshake_done, force=True)
+        # timeout the handshakes in case the client doesn't reply at all
+        delay(2, callback=self.handshake_done, timeout=True)
 
         # TCP/IP keepalive watches for dead links
         self.transport.setTcpKeepAlive(1)
@@ -100,17 +100,18 @@ class TelnetProtocol(Telnet, StatefulTelnetProtocol, Session):
             self.nop_keep_alive = LoopingCall(self._send_nop_keepalive)
             self.nop_keep_alive.start(30, now=False)
 
-    def handshake_done(self, force=False):
+    def handshake_done(self, timeout=False):
         """
         This is called by all telnet extensions once they are finished.
         When all have reported, a sync with the server is performed.
         The system will force-call this sync after a small time to handle
         clients that don't reply to handshakes at all.
         """
-        if self.handshakes > 0:
-            if force:
+        if timeout:
+            if self.handshakes > 0:
+                self.handshakes = 0
                 self.sessionhandler.sync(self)
-                return
+        else:
             self.handshakes -= 1
             if self.handshakes <= 0:
                 # do the sync
@@ -230,9 +231,11 @@ class TelnetProtocol(Telnet, StatefulTelnetProtocol, Session):
             line (str): Line to send.
 
         """
-        # escape IAC in line mode, and correctly add \r\n
-        line += self.delimiter
-        line = line.replace(IAC, IAC + IAC).replace('\n', '\r\n')
+        # escape IAC in line mode, and correctly add \r\n (the TELNET end-of-line)
+        line = line.replace(IAC, IAC + IAC)
+        line = line.replace('\n', '\r\n')
+        if not line.endswith("\r\n") and self.protocol_flags.get("FORCEDENDLINE", True):
+            line += "\r\n"
         if not self.protocol_flags.get("NOGOAHEAD", True):
             line += IAC + GA
         return self.transport.write(mccp_compress(self, line))
@@ -305,8 +308,8 @@ class TelnetProtocol(Telnet, StatefulTelnetProtocol, Session):
         # handle arguments
         options = kwargs.get("options", {})
         flags = self.protocol_flags
-        xterm256 = options.get("xterm256", flags.get('XTERM256', False) if flags["TTYPE"] else True)
-        useansi = options.get("ansi", flags.get('ANSI', False) if flags["TTYPE"] else True)
+        xterm256 = options.get("xterm256", flags.get('XTERM256', False) if flags.get("TTYPE", False) else True)
+        useansi = options.get("ansi", flags.get('ANSI', False) if flags.get("TTYPE", False) else True)
         raw = options.get("raw", flags.get("RAW", False))
         nocolor = options.get("nocolor", flags.get("NOCOLOR") or not (xterm256 or useansi))
         echo = options.get("echo", None)

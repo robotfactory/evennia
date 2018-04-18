@@ -14,15 +14,16 @@ main test suite started with
 
 import re
 import types
+import datetime
 
 from django.conf import settings
-from mock import Mock
+from mock import Mock, mock
 
 from evennia.commands.default.cmdset_character import CharacterCmdSet
 from evennia.utils.test_resources import EvenniaTest
-from evennia.commands.default import help, general, system, admin, account, building, batchprocess, comms
+from evennia.commands.default import help, general, system, admin, account, building, batchprocess, comms, unloggedin
 from evennia.commands.command import Command, InterruptCommand
-from evennia.utils import ansi, utils
+from evennia.utils import ansi, utils, gametime
 from evennia.server.sessionhandler import SESSIONS
 from evennia import search_object
 from evennia import DefaultObject, DefaultCharacter
@@ -37,12 +38,13 @@ _RE = re.compile(r"^\+|-+\+|\+-+|--*|\|(?:\s|$)", re.MULTILINE)
 # Command testing
 # ------------------------------------------------------------
 
+
 class CommandTest(EvenniaTest):
     """
     Tests a command
     """
-
-    def call(self, cmdobj, args, msg=None, cmdset=None, noansi=True, caller=None, receiver=None, cmdstring=None, obj=None):
+    def call(self, cmdobj, args, msg=None, cmdset=None, noansi=True, caller=None,
+             receiver=None, cmdstring=None, obj=None):
         """
         Test a command by assigning all the needed
         properties to cmdobj and  running
@@ -74,7 +76,8 @@ class CommandTest(EvenniaTest):
         returned_msg = ""
         try:
             receiver.msg = Mock()
-            cmdobj.at_pre_cmd()
+            if cmdobj.at_pre_cmd():
+                return
             cmdobj.parse()
             ret = cmdobj.func()
             if isinstance(ret, types.GeneratorType):
@@ -125,11 +128,12 @@ class TestGeneral(CommandTest):
         self.call(general.CmdPose(), "looks around", "Char looks around")
 
     def test_nick(self):
-        self.call(general.CmdNick(), "testalias = testaliasedstring1", "Nick 'testalias' mapped to 'testaliasedstring1'.")
-        self.call(general.CmdNick(), "/account testalias = testaliasedstring2", "Nick 'testalias' mapped to 'testaliasedstring2'.")
-        self.call(general.CmdNick(), "/object testalias = testaliasedstring3", "Nick 'testalias' mapped to 'testaliasedstring3'.")
+        self.call(general.CmdNick(), "testalias = testaliasedstring1", "Inputlinenick 'testalias' mapped to 'testaliasedstring1'.")
+        self.call(general.CmdNick(), "/account testalias = testaliasedstring2", "Accountnick 'testalias' mapped to 'testaliasedstring2'.")
+        self.call(general.CmdNick(), "/object testalias = testaliasedstring3", "Objectnick 'testalias' mapped to 'testaliasedstring3'.")
         self.assertEqual(u"testaliasedstring1", self.char1.nicks.get("testalias"))
-        self.assertEqual(u"testaliasedstring2", self.char1.nicks.get("testalias", category="account"))
+        self.assertEqual(None, self.char1.nicks.get("testalias", category="account"))
+        self.assertEqual(u"testaliasedstring2", self.char1.account.nicks.get("testalias", category="account"))
         self.assertEqual(u"testaliasedstring3", self.char1.nicks.get("testalias", category="object"))
 
     def test_get_and_drop(self):
@@ -183,7 +187,7 @@ class TestAdmin(CommandTest):
         self.call(admin.CmdPerm(), "Char2 = Builder", "Permission 'Builder' given to Char2 (the Object/Character).")
 
     def test_wall(self):
-        self.call(admin.CmdWall(), "Test", "Announcing to all connected accounts ...")
+        self.call(admin.CmdWall(), "Test", "Announcing to all connected sessions ...")
 
     def test_ban(self):
         self.call(admin.CmdBan(), "Char", "NameBan char was added.")
@@ -431,3 +435,12 @@ class TestInterruptCommand(CommandTest):
     def test_interrupt_command(self):
         ret = self.call(CmdInterrupt(), "")
         self.assertEqual(ret, "")
+
+
+class TestUnconnectedCommand(CommandTest):
+    def test_info_command(self):
+        expected = "## BEGIN INFO 1.1\nName: %s\nUptime: %s\nConnected: %d\nVersion: Evennia %s\n## END INFO" % (
+                        settings.SERVERNAME,
+                        datetime.datetime.fromtimestamp(gametime.SERVER_START_TIME).ctime(),
+                        SESSIONS.account_count(), utils.get_evennia_version())
+        self.call(unloggedin.CmdUnconnectedInfo(), "", expected)

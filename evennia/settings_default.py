@@ -307,6 +307,14 @@ CMD_IGNORE_PREFIXES = "@&/+"
 # This module should contain one or more variables
 # with strings defining the look of the screen.
 CONNECTION_SCREEN_MODULE = "server.conf.connection_screens"
+# Delay to use before sending the evennia.syscmdkeys.CMD_LOGINSTART Command
+# when a new session connects (this defaults the unloggedin-look for showing
+# the connection screen). The delay is useful mainly for telnet, to allow
+# client/server to establish client capabilities like color/mxp etc before
+# sending any text. A value of 0.3 should be enough. While a good idea, it may
+# cause issues with menu-logins and autoconnects since the menu will not have
+# started when the autoconnects starts sending menu commands.
+DELAY_CMD_LOGINSTART = 0.3
 # An optional module that, if existing, must hold a function
 # named at_initial_setup(). This hook method can be used to customize
 # the server's initial setup sequence (the very first startup of the system).
@@ -636,8 +644,6 @@ RSS_UPDATE_INTERVAL = 60 * 10  # 10 minutes
 # browser to display. Note however that this will leak memory when
 # active, so make sure to turn it off for a production server!
 DEBUG = False
-# While true, show "pretty" error messages for template syntax errors.
-TEMPLATE_DEBUG = DEBUG
 # Emails are sent to these people if the above DEBUG value is False. If you'd
 # rather prefer nobody receives emails, leave this commented out or empty.
 ADMINS = ()  # 'Your Name', 'your_email@domain.com'),)
@@ -730,7 +736,9 @@ TEMPLATES = [{
             'django.template.context_processors.media',
             'django.template.context_processors.debug',
             'sekizai.context_processors.sekizai',
-            'evennia.web.utils.general_context.general_context']
+            'evennia.web.utils.general_context.general_context'],
+        # While true, show "pretty" error messages for template syntax errors.
+        "debug": DEBUG
     }
 }]
 

@@ -18,7 +18,7 @@ from evennia.contrib import rplanguage
 mtrans = {"testing": "1", "is": "2", "a": "3", "human": "4"}
 atrans = ["An", "automated", "advantageous", "repeatable", "faster"]
 
-text = "Automated testing is advantageous for a number of reasons:" \
+text = "Automated testing is advantageous for a number of reasons: " \
        "tests may be executed Continuously without the need for human " \
        "intervention, They are easily repeatable, and often faster."
 
@@ -33,6 +33,11 @@ class TestLanguage(EvenniaTest):
                                 manual_translations=mtrans,
                                 auto_translations=atrans,
                                 force=True)
+        rplanguage.add_language(key="binary",
+                                phonemes="oo ii a ck w b d t",
+                                grammar="cvvv cvv cvvcv cvvcvv cvvvc cvvvcvv cvvc",
+                                noun_prefix='beep-',
+                                word_length_variance=4)
 
     def tearDown(self):
         super(TestLanguage, self).tearDown()
@@ -44,22 +49,36 @@ class TestLanguage(EvenniaTest):
         self.assertEqual(result0, text)
         result1 = rplanguage.obfuscate_language(text, level=1.0, language="testlang")
         result2 = rplanguage.obfuscate_language(text, level=1.0, language="testlang")
+        result3 = rplanguage.obfuscate_language(text, level=1.0, language='binary')
+
         self.assertNotEqual(result1, text)
+        self.assertNotEqual(result3, text)
         result1, result2 = result1.split(), result2.split()
         self.assertEqual(result1[:4], result2[:4])
         self.assertEqual(result1[1], "1")
         self.assertEqual(result1[2], "2")
         self.assertEqual(result2[-1], result2[-1])
 
+    def test_faulty_language(self):
+        self.assertRaises(
+            rplanguage.LanguageError,
+            rplanguage.add_language,
+            key='binary2',
+            phonemes="w b d t oe ee, oo e o a wh dw bw",  # erroneous comma
+            grammar="cvvv cvv cvvcv cvvcvvo cvvvc cvvvcvv cvvc c v cc vv ccvvc ccvvccvv ",
+            vowels="oea",
+            word_length_variance=4)
+
+
     def test_available_languages(self):
-        self.assertEqual(rplanguage.available_languages(), ["testlang"])
+        self.assertEqual(rplanguage.available_languages(), ["testlang", "binary"])
 
     def test_obfuscate_whisper(self):
         self.assertEqual(rplanguage.obfuscate_whisper(text, level=0.0), text)
         assert (rplanguage.obfuscate_whisper(text, level=0.1).startswith(
-            '-utom-t-d t-sting is -dv-nt-g-ous for - numb-r of r--sons:t-sts m-y b- -x-cut-d Continuously'))
+            '-utom-t-d t-sting is -dv-nt-g-ous for - numb-r of r--sons: t-sts m-y b- -x-cut-d Continuously'))
         assert(rplanguage.obfuscate_whisper(text, level=0.5).startswith(
-            '--------- --s---- -s -----------s f-- - ------ -f ---s--s:--s-s '))
+            '--------- --s---- -s -----------s f-- - ------ -f ---s--s: --s-s '))
         self.assertEqual(rplanguage.obfuscate_whisper(text, level=1.0), "...")
 
 # Testing of emoting / sdesc / recog system
@@ -796,9 +815,30 @@ class TestTutorialWorldMob(EvenniaTest):
 
 
 from evennia.contrib.tutorial_world import objects as tutobjects
+from mock.mock import MagicMock
+from twisted.trial.unittest import TestCase as TwistedTestCase
+
+from twisted.internet.base import DelayedCall
+DelayedCall.debug = True
 
 
-class TestTutorialWorldObjects(CommandTest):
+def _mockdelay(tim, func, *args, **kwargs):
+    func(*args, **kwargs)
+    return MagicMock()
+
+
+def _mockdeferLater(reactor, timedelay, callback, *args, **kwargs):
+    callback(*args, **kwargs)
+    return MagicMock()
+
+
+class TestTutorialWorldObjects(TwistedTestCase, CommandTest):
+
+    def setUp(self):
+        self.patch(sys.modules['evennia.contrib.tutorial_world.objects'], 'delay', _mockdelay)
+        self.patch(sys.modules['evennia.scripts.taskhandler'], 'deferLater', _mockdeferLater)
+        super(TestTutorialWorldObjects, self).setUp()
+
     def test_tutorialobj(self):
         obj1 = create_object(tutobjects.TutorialObject, key="tutobj")
         obj1.reset()
@@ -820,10 +860,7 @@ class TestTutorialWorldObjects(CommandTest):
 
     def test_lightsource(self):
         light = create_object(tutobjects.LightSource, key="torch", location=self.room1)
-        self.call(tutobjects.CmdLight(), "", "You light torch.", obj=light)
-        light._burnout()
-        if hasattr(light, "deferred"):
-            light.deferred.cancel()
+        self.call(tutobjects.CmdLight(), "", "A torch on the floor flickers and dies.|You light torch.", obj=light)
         self.assertFalse(light.pk)
 
     def test_crumblingwall(self):
@@ -841,12 +878,12 @@ class TestTutorialWorldObjects(CommandTest):
                   "You shift the weedy green root upwards.|Holding aside the root you think you notice something behind it ...", obj=wall)
         self.call(tutobjects.CmdPressButton(), "",
                   "You move your fingers over the suspicious depression, then gives it a decisive push. First", obj=wall)
-        self.assertTrue(wall.db.button_exposed)
-        self.assertTrue(wall.db.exit_open)
+        # we patch out the delay, so these are closed immediately
+        self.assertFalse(wall.db.button_exposed)
+        self.assertFalse(wall.db.exit_open)
         wall.reset()
-        if hasattr(wall, "deferred"):
-            wall.deferred.cancel()
         wall.delete()
+        return wall.deferred
 
     def test_weapon(self):
         weapon = create_object(tutobjects.Weapon, key="sword", location=self.char1)
