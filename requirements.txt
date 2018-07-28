@@ -9,3 +9,6 @@ django-sekizai
 django >1.10,<2.0
 pycrypto
 service_identity
+cryptography
+pyasn1
+pytz

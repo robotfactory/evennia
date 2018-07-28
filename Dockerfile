@@ -31,7 +31,7 @@ ADD . /usr/src/evennia
 
 # install dependencies
 RUN pip install -e /usr/src/evennia --trusted-host pypi.python.org
-RUN pip install cryptography pyasn1 service_identity
+# RUN pip install cryptography pyasn1 service_identity
 
 
 # add the game source when rebuilding a new docker image from inside
